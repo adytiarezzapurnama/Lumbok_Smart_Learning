@@ -1,0 +1,54 @@
+{
+  "packages": [
+    {
+      "id": "pkg-ipa-8",
+      "name": "IPA Kelas VIII — Sistem Pernapasan",
+      "subject": "IPA",
+      "grade": "VIII",
+      "topic": "Sistem Pernapasan",
+      "description": "Paket contoh untuk pembelajaran IPA.",
+      "createdAt": "2026-10-02"
+    }
+  ],
+  "materials": [
+    {
+      "id": "mat-ipa-1",
+      "packageId": "pkg-ipa-8",
+      "title": "Mengenal Sistem Pernapasan",
+      "body": "Sistem pernapasan manusia berfungsi mengambil oksigen dan mengeluarkan karbon dioksida. Organ utamanya meliputi hidung, faring, laring, trakea, bronkus, bronkiolus, dan alveolus.",
+      "subject": "IPA",
+      "grade": "VIII"
+    }
+  ],
+  "questions": [
+    {
+      "id": "q-1",
+      "packageId": "pkg-ipa-8",
+      "question": "Tempat pertukaran gas oksigen dan karbon dioksida pada paru-paru adalah ...",
+      "options": [
+        "Trakea",
+        "Alveolus",
+        "Laring",
+        "Faring"
+      ],
+      "answer": 1,
+      "explanation": "Alveolus merupakan tempat pertukaran gas.",
+      "score": 100
+    },
+    {
+      "id": "q-2",
+      "packageId": "pkg-ipa-8",
+      "question": "Saluran yang menghubungkan laring dengan bronkus disebut ...",
+      "options": [
+        "Trakea",
+        "Faring",
+        "Hidung",
+        "Alveolus"
+      ],
+      "answer": 0,
+      "explanation": "Trakea menghubungkan laring dengan bronkus.",
+      "score": 100
+    }
+  ],
+  "games": []
+}

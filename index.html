@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#173f5f">
+  <meta name="description" content="LUMBOK SMART LEARNING - pembelajaran digital adaptif online-offline.">
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="assets/icon.svg">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="assets/mathlive/mathlive-fonts.css">
+  <script src="assets/mathlive/mathlive.min.js" defer></script>
+  <title>LUMBOK SMART LEARNING</title>
+</head>
+<body>
+  <div id="app">
+    <header class="topbar">
+      <button class="brand" data-view="home" aria-label="Beranda">
+        <span class="brand-mark">L</span>
+        <span><b>LUMBOK</b><small>SMART LEARNING</small></span>
+      </button>
+      <div class="top-actions">
+        <span id="connection" class="status offline">● Offline</span>
+        <button class="icon-btn" id="backupBtn" title="Cadangkan data">⇩</button>
+        <button class="icon-btn" id="restoreBtn" title="Pulihkan data">⇧</button>
+        <button class="icon-btn" id="teacherLoginTop" title="Akses Guru">🔐 Guru</button>
+        <input id="restoreInput" type="file" accept=".json,.lsl" hidden>
+      </div>
+    </header>
+
+    <div class="layout">
+      <aside class="sidebar" id="sidebar">
+        <nav>
+          <button class="nav-item active" data-view="home">⌂ <span>Beranda</span></button>
+          <button class="nav-item" data-view="student">🎓 <span>Mode Siswa</span></button>
+          <button class="nav-item teacher-only" data-view="teacher">🔐 <span>Studio Guru</span></button>
+          <button class="nav-item teacher-only" data-view="packages">▤ <span>Paket Belajar</span></button>
+          <button class="nav-item teacher-only" data-view="materials">📚 <span>Materi</span></button>
+          <button class="nav-item teacher-only" data-view="quiz">✓ <span>Bank Soal</span></button>
+          <button class="nav-item teacher-only" data-view="games">🎮 <span>Game Library</span></button>
+          <button class="nav-item teacher-only" data-view="results">◫ <span>Hasil Belajar</span></button>
+        </nav>
+        <div class="sidebar-note">
+          <b>Offline-first</b>
+          <p>Internet menjadi pendukung, bukan prasyarat fitur inti.</p>
+        </div>
+      </aside>
+
+      <main id="content"></main>
+    </div>
+  </div>
+
+  <dialog id="modal">
+    <div id="modalBody"></div>
+  </dialog>
+  <div id="toast" class="toast"></div>
+  <button id="globalKeyboardToggle" class="global-keyboard-toggle" type="button" aria-expanded="false" title="Buka keyboard virtual">⌨️ Keyboard</button>
+  <section id="globalKeyboardPanel" class="global-keyboard-panel" aria-label="Keyboard matematika" hidden>
+    <div class="global-keyboard-head"><b>⌨️ Keyboard Virtual Matematika</b><button id="globalKeyboardClose" type="button" aria-label="Tutup keyboard">×</button></div>
+    <p class="muted">Pilih kolom jawaban/soal, lalu gunakan tombol rumus. Tekan Sisipkan untuk memasukkan LaTeX ke kolom aktif.</p>
+    <math-field id="globalMathField" virtual-keyboard-mode="manual" smart-fence></math-field>
+    <div class="global-keyboard-actions"><button id="globalMathInsert" class="btn btn-primary" type="button">Sisipkan ke kolom aktif</button><button id="globalMathClear" class="btn btn-secondary" type="button">Bersihkan</button></div>
+  </section>
+  <script src="app.js"></script>
+</body>
+</html>

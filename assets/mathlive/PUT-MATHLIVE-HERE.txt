@@ -1,0 +1,1 @@
+Tempatkan file distribusi MathLive resmi di folder ini. File utama yang dicari aplikasi: mathlive.min.js. Setelah library tersedia, hapus file ini jika diinginkan.
