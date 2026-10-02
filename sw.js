@@ -1,4 +1,4 @@
-const CACHE="lsl-v3";
+const CACHE="lsl-v4";
 const ASSETS=["./","./index.html","./styles.css","./app.js","./manifest.json","./assets/icon.svg","./data/sample.json","./assets/mathlive/mathlive.min.js","./assets/mathlive/mathlive-fonts.css"];
 self.addEventListener("install",e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS)).then(()=>self.skipWaiting())));
 self.addEventListener("activate",e=>e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k.startsWith("lsl-")&&k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim())));

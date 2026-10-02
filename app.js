@@ -1,10 +1,10 @@
-const DB_NAME="lumbok-smart-learning", DB_VERSION=1;
-const STORES=["packages","materials","questions","games","results","settings"];
+const DB_NAME="lumbok-smart-learning", DB_VERSION=2;
+const STORES=["packages","materials","questions","games","results","settings","submissions"];
 let db, currentView="home", editing=null, studentQuiz=null;
 let teacherAuthenticated = sessionStorage.getItem("lsl_teacher_session") === "1";
 const DEFAULT_TEACHER_PIN = "LUMBOK2026";
 let teacherPin = DEFAULT_TEACHER_PIN;
-const TEACHER_VIEWS = new Set(["teacher","packages","materials","quiz","games","results","settings"]);
+const TEACHER_VIEWS = new Set(["teacher","packages","materials","quiz","games","results","settings","submissions"]);
 
 const seed = {
  packages:[{id:"pkg-ipa-8",name:"IPA Kelas VIII — Sistem Pernapasan",subject:"IPA",grade:"VIII",topic:"Sistem Pernapasan",description:"Paket contoh untuk pembelajaran IPA.",createdAt:"2026-10-02"}],
@@ -12,7 +12,7 @@ const seed = {
  questions:[
  {id:"q-1",packageId:"pkg-ipa-8",question:"Tempat pertukaran gas oksigen dan karbon dioksida pada paru-paru adalah ...",options:["Trakea","Alveolus","Laring","Faring"],answer:1,explanation:"Alveolus merupakan tempat pertukaran gas.",score:100},
  {id:"q-2",packageId:"pkg-ipa-8",question:"Saluran yang menghubungkan laring dengan bronkus disebut ...",options:["Trakea","Faring","Hidung","Alveolus"],answer:0,explanation:"Trakea menghubungkan laring dengan bronkus.",score:100}],
- games:[],results:[]
+ games:[],results:[],submissions:[]
 };
 
 function id(prefix){return prefix+"-"+Date.now().toString(36)+"-"+Math.random().toString(36).slice(2,7)}
@@ -38,7 +38,7 @@ function teacherLogin(){
 function teacherLogout(){teacherAuthenticated=false;sessionStorage.removeItem("lsl_teacher_session");currentView="student";render();toast("Guru telah keluar")};
 function goView(view){if(TEACHER_VIEWS.has(view) && !isTeacher()){teacherLogin();return}currentView=view;render()}
 
-async function counts(){const [p,m,q,g,r]=await Promise.all(["packages","materials","questions","games","results"].map(all));return {p:p.length,m:m.length,q:q.length,g:g.length,r:r.length}}
+async function counts(){const [p,m,q,g,r,s]=await Promise.all(["packages","materials","questions","games","results","submissions"].map(all));return {p:p.length,m:m.length,q:q.length,g:g.length,r:r.length,s:s.length}}
 
 function layout(title,sub,body,actions=""){return `<div class="section-head"><div><div class="kicker">LUMBOK SMART LEARNING</div><h1 style="margin:4px 0">${title}</h1><div class="muted">${sub}</div></div><div>${actions}</div></div>${body}`}
 
@@ -59,7 +59,7 @@ async function renderSettings(){
 async function renderTeacher(){
  const c=await counts();
  return layout("Studio Guru","Pusat pembuatan dan pengelolaan sumber belajar",`<div class="teacher-lockbar"><span class="badge">🔐 Akses Guru Aktif</span><button class="btn btn-secondary btn-sm" id="teacherLogout">Keluar dari Studio Guru</button></div><div class="grid4">
- ${[['📦',c.p,'Paket Pembelajaran','packages'],['📚',c.m,'Materi','materials'],['✓',c.q,'Bank Soal','quiz'],['🎮',c.g,'Game Library','games'],['⚙️','', 'Pengaturan Guru','settings']].map(x=>`<div class="card"><div style="font-size:25px">${x[0]}</div><div class="stat">${x[1]}</div><h3>${x[2]}</h3><button class="btn btn-primary btn-sm" data-view="${x[3]}">Buka</button></div>`).join("")}</div>
+ ${[['📦',c.p,'Paket Pembelajaran','packages'],['📚',c.m,'Materi','materials'],['✓',c.q,'Bank Soal','quiz'],['🎮',c.g,'Game Library','games'],['📤',c.s,'Pengumpulan Tugas','submissions'],['⚙️','', 'Pengaturan Guru','settings']].map(x=>`<div class="card"><div style="font-size:25px">${x[0]}</div><div class="stat">${x[1]}</div><h3>${x[2]}</h3><button class="btn btn-primary btn-sm" data-view="${x[3]}">Buka</button></div>`).join("")}</div>
  <div class="section two-col"><div class="card"><h3>Alur kerja guru</h3><ol class="muted" style="line-height:2"><li>Buat atau impor konten.</li><li>Simpan paket secara lokal.</li><li>Siapkan distribusi kepada siswa.</li><li>Laksanakan pembelajaran.</li><li>Rekap dan cadangkan hasil.</li></ol></div><div class="card"><h3>Status penyimpanan</h3><p>IndexedDB aktif pada browser ini.</p><span class="badge">Local-first storage</span><p class="muted">Gunakan Backup sebelum menghapus data browser atau berpindah perangkat.</p></div></div>`);
 }
 
@@ -138,11 +138,42 @@ async function renderResults(){
 }
 
 async function renderStudent(){
- const [ps,ms,qs,gs]=await Promise.all(["packages","materials","questions","games"].map(all));
- return layout("Mode Siswa","Belajar dengan materi, quiz, dan game yang tersedia di perangkat.",`<div class="notice">Jika koneksi terputus, konten yang sudah tersimpan di perangkat tetap dapat digunakan.</div><div class="section-head"><h2>Paket Belajar</h2></div><div class="grid">${ps.map(p=>`<div class="card"><div class="subject"><div class="subject-icon">${esc(p.subject?.[0]||"L")}</div><div><b>${esc(p.name)}</b><div class="muted">Kelas ${esc(p.grade)}</div></div></div><p class="muted">${esc(p.description||"")}</p><button class="btn btn-primary btn-sm open-package" data-id="${p.id}">Belajar</button></div>`).join("")||`<div class="empty">Belum ada paket.</div>`}</div><div class="section"><h2>🎮 Game Offline</h2><div class="grid">${gs.map(g=>`<div class="card"><h3>${esc(g.name)}</h3><p class="muted">${esc(g.description||"Game edukatif tersimpan di perangkat")}</p><button class="btn btn-primary btn-sm student-play-game" data-id="${g.id}">Mainkan Game</button></div>`).join("")||'<div class="empty">Game belum tersedia. Guru dapat mengimpor HTML melalui Game Library.</div>'}</div></div><div class="section grid"><div class="card"><h3>📚 Materi tersedia</h3><div class="stat">${ms.length}</div><p class="muted">Materi lokal siap dibaca.</p></div><div class="card"><h3>✓ Soal tersedia</h3><div class="stat">${qs.length}</div><p class="muted">Evaluasi interaktif.</p></div><div class="card"><h3>🎮 Game tersedia</h3><div class="stat">${gs.length}</div><p class="muted">Game edukatif HTML.</p></div></div>`);
+ const [ps,ms,qs,gs,subs]=await Promise.all(["packages","materials","questions","games","submissions"].map(all));
+ return layout("Mode Siswa","Belajar dengan materi, quiz, game, dan pengumpulan tugas.",`<div class="notice">Jika koneksi terputus, konten yang sudah tersimpan di perangkat tetap dapat digunakan. Tugas yang dikirim juga tersimpan lokal di perangkat ini.</div>
+ <div class="section-head"><div><h2>Paket Belajar</h2><p class="muted">Materi dan evaluasi pembelajaran tersedia di sini.</p></div><button class="btn btn-secondary" data-view="student-games">🎮 Buka Game Library</button></div>
+ <div class="grid">${ps.map(p=>`<div class="card"><div class="subject"><div class="subject-icon">${esc(p.subject?.[0]||"L")}</div><div><b>${esc(p.name)}</b><div class="muted">Kelas ${esc(p.grade)}</div></div></div><p class="muted">${esc(p.description||"")}</p><button class="btn btn-primary btn-sm open-package" data-id="${p.id}">Belajar</button></div>`).join("")||`<div class="empty">Belum ada paket.</div>`}</div>
+ <div class="section grid">
+  <div class="card"><h3>📤 Upload Tugas</h3><p class="muted">Kirim PDF, Word, PowerPoint, Excel, gambar, ZIP, dan format umum lainnya.</p><button class="btn btn-primary" data-view="student-submissions">Upload Tugas</button></div>
+  <div class="card"><h3>🎮 Game Library</h3><div class="stat">${gs.length}</div><p class="muted">Game tidak lagi ditempatkan di dalam Paket Belajar.</p><button class="btn btn-secondary" data-view="student-games">Lihat Game</button></div>
+  <div class="card"><h3>📚 Materi tersedia</h3><div class="stat">${ms.length}</div><p class="muted">Materi lokal siap dibaca.</p></div>
+ </div>
+ <div class="section grid"><div class="card"><h3>✓ Soal tersedia</h3><div class="stat">${qs.length}</div><p class="muted">Evaluasi interaktif.</p></div><div class="card"><h3>📨 Tugas tersimpan</h3><div class="stat">${subs.length}</div><p class="muted">Pengumpulan pada perangkat ini.</p></div></div>`);
 }
 
-async function openPackage(pid){const [p,ms,qs,gs]=await Promise.all([all("packages"),all("materials"),all("questions"),all("games")]);const pack=p.find(x=>x.id===pid);const visible=ms.filter(x=>x.packageId===pid&&x.published!==false);const packageQs=qs.filter(x=>x.packageId===pid);modal(`<div class="modal"><div class="modal-head"><div><h2>${esc(pack?.name)}</h2><span class="badge">${esc(pack?.subject)} • ${esc(pack?.grade)}</span></div><button class="close" onclick="closeModal()">×</button></div><div class="section"><h3>📚 Materi Pembelajaran</h3>${visible.map(m=>materialPreviewMarkup(m)+`<button class="btn btn-primary btn-sm material-quiz" data-pid="${pid}" data-mid="${m.id}">Evaluasi materi ini</button>`).join("")||'<p class="muted">Belum ada materi untuk paket ini.</p>'}</div><div class="section"><h3>Evaluasi Paket</h3><p>${packageQs.length} soal tersedia dari bank soal paket ini.</p><button class="btn btn-primary" id="startQuiz" data-pid="${pid}">Mulai Quiz Paket</button></div><div class="section"><h3>🎮 Game Pembelajaran</h3>${gs.map(g=>`<div class="resource-box"><b>${esc(g.name)}</b><button class="btn btn-secondary btn-sm student-play-game" data-id="${g.id}">Mainkan</button></div>`).join("")||'<p class="muted">Belum ada game yang diunggah guru.</p>'}</div></div>`);document.querySelector('#startQuiz')?.addEventListener('click',()=>startQuiz(pid));document.querySelectorAll('.material-quiz').forEach(b=>b.onclick=()=>startQuiz(pid,b.dataset.mid));document.querySelectorAll('.student-play-game').forEach(b=>b.onclick=()=>playGame(b.dataset.id));}
+async function renderStudentGames(){
+ const gs=await all("games");
+ return layout("Game Library","Semua game pembelajaran siswa dikumpulkan di satu tempat dan tidak ditampilkan lagi di dalam Paket Belajar.",`<div class="section-head"><div><h2>🎮 Game Pembelajaran</h2><p class="muted">Game HTML dapat dimainkan langsung secara offline setelah tersedia di perangkat.</p></div><button class="btn btn-secondary" data-view="student">← Kembali ke Mode Siswa</button></div><div class="grid">${gs.map(g=>`<div class="card"><span class="badge">HTML • Offline</span><h3 style="margin-top:12px">${esc(g.name)}</h3><p class="muted">${esc(g.description||"Game edukatif tersimpan di perangkat")}</p><button class="btn btn-primary" data-student-play-game="${g.id}">▶ Mainkan Game</button></div>`).join("")||'<div class="empty">Game belum tersedia. Guru dapat mengimpor game melalui Game Library Guru.</div>'}</div>`);
+}
+
+function submissionAccept(){return '.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.csv,.txt,.rtf,.jpg,.jpeg,.png,.webp,.gif,.zip,.rar,.7z,.odt,.ods,.odp';}
+function formatBytes(n=0){if(n<1024)return `${n} B`;if(n<1024*1024)return `${(n/1024).toFixed(1)} KB`;return `${(n/1024/1024).toFixed(1)} MB`}
+async function renderStudentSubmissions(){
+ const [ps,subs]=await Promise.all([all("packages"),all("submissions")]);
+ const recent=subs.sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt)).slice(0,10);
+ return layout("Upload Tugas","Kirim tugas siswa dalam berbagai format. Data disimpan lokal agar tetap dapat digunakan saat offline.",`<div class="two-col"><div class="card"><div class="kicker">PENGUMPULAN TUGAS</div><h2 style="margin-top:6px">📤 Kirim Tugas</h2><div class="notice">Format yang didukung: PDF, DOC/DOCX, PPT/PPTX, XLS/XLSX, CSV, TXT/RTF, JPG/JPEG/PNG/WEBP/GIF, ZIP/RAR/7Z, ODT/ODS/ODP. Maksimal 20 MB per file.</div><form id="submissionForm"><div class="form-grid"><div class="field"><label>Nama Siswa</label><input name="student" required placeholder="Nama lengkap siswa"></div><div class="field"><label>Paket / Mata Pelajaran</label><select name="packageId"><option value="">Tidak terkait paket tertentu</option>${ps.map(p=>`<option value="${p.id}">${esc(p.name)} — Kelas ${esc(p.grade)}</option>`).join("")}</select></div></div><div class="field"><label>Judul Tugas</label><input name="title" required placeholder="Contoh: Tugas Sistem Pernapasan"></div><div class="field"><label>Keterangan (opsional)</label><textarea name="note" placeholder="Catatan untuk guru..."></textarea></div><div class="field"><label>File Tugas</label><input id="submissionFiles" name="files" type="file" multiple accept="${submissionAccept()}"><small class="muted">Bisa memilih beberapa file sekaligus. Maksimal 20 MB per file.</small></div><div id="submissionFileList" class="file-list"></div><button class="btn btn-primary" type="submit">📤 Kirim Tugas</button></form></div><div class="card"><h3>Alur pengumpulan</h3><ol class="muted" style="line-height:1.8"><li>Pilih nama siswa dan paket.</li><li>Masukkan judul tugas.</li><li>Pilih satu atau beberapa file.</li><li>Klik Kirim Tugas.</li><li>Guru dapat melihat dan mengunduhnya dari Pengumpulan Tugas.</li></ol><div class="notice">Pada mode offline, pengumpulan tersimpan di IndexedDB perangkat ini. Untuk memindahkannya ke perangkat guru, gunakan Backup/Restore aplikasi.</div></div></div><div class="section"><div class="card"><h3>Pengumpulan Terbaru</h3><div class="table-wrap"><table><thead><tr><th>Waktu</th><th>Siswa</th><th>Tugas</th><th>File</th></tr></thead><tbody>${recent.map(s=>`<tr><td>${fmt(s.createdAt)}</td><td>${esc(s.student)}</td><td>${esc(s.title)}</td><td>${s.files?.map(f=>esc(f.name)).join(", ")||"-"}</td></tr>`).join("")||'<tr><td colspan="4">Belum ada tugas dikirim dari perangkat ini.</td></tr>'}</tbody></table></div></div></div>`);
+ const f=document.querySelector('#submissionForm'), filesInput=document.querySelector('#submissionFiles'), list=document.querySelector('#submissionFileList');
+ filesInput?.addEventListener('change',()=>{const files=[...filesInput.files];list.innerHTML=files.map(x=>`<div class="file-chip">📎 ${esc(x.name)} <span>${formatBytes(x.size)}</span></div>`).join("")||""});
+ f.onsubmit=async e=>{e.preventDefault();const files=[...filesInput.files];if(!files.length){toast("Pilih minimal satu file tugas");return}const tooBig=files.find(x=>x.size>20*1024*1024);if(tooBig){toast(`File ${tooBig.name} melebihi 20 MB`);return}const fd=new FormData(f);const stored=[];for(const file of files)stored.push({name:file.name,type:file.type||"application/octet-stream",size:file.size,data:await fileToDataURL(file)});await put("submissions",{id:id("sub"),student:String(fd.get("student")).trim(),packageId:String(fd.get("packageId")||""),title:String(fd.get("title")).trim(),note:String(fd.get("note")||""),files:stored,createdAt:new Date().toISOString()});f.reset();list.innerHTML="";toast("Tugas berhasil disimpan");await render()};
+}
+
+async function renderSubmissions(){
+ const [subs,ps]=await Promise.all([all("submissions"),all("packages")]);const pn=Object.fromEntries(ps.map(p=>[p.id,p.name]));
+ return layout("Pengumpulan Tugas","Guru dapat melihat dan mengunduh tugas yang tersimpan di perangkat ini atau hasil Restore dari perangkat siswa.",`<div class="notice">Pengumpulan tugas bersifat lokal/offline. Jika siswa mengumpulkan pada perangkat berbeda, gunakan Backup dari perangkat siswa lalu Restore di perangkat guru.</div><div class="card"><div class="table-wrap"><table><thead><tr><th>Waktu</th><th>Siswa</th><th>Tugas</th><th>Paket</th><th>File</th><th>Aksi</th></tr></thead><tbody>${subs.sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt)).map(s=>`<tr><td>${fmt(s.createdAt)}</td><td><b>${esc(s.student)}</b></td><td>${esc(s.title)}${s.note?`<br><span class="muted">${esc(s.note)}</span>`:""}</td><td>${esc(pn[s.packageId]||"-")}</td><td>${s.files?.map(f=>`<div>📎 ${esc(f.name)} <small class="muted">(${formatBytes(f.size)})</small></div>`).join("")||"-"}</td><td>${s.files?.map((f,i)=>`<button class="btn btn-secondary btn-sm download-submission" data-sid="${s.id}" data-index="${i}">Unduh</button>`).join(" ")||""} <button class="btn btn-danger btn-sm delete-submission" data-id="${s.id}">Hapus</button></td></tr>`).join("")||'<tr><td colspan="6">Belum ada pengumpulan tugas.</td></tr>'}</tbody></table></div></div>`);
+}
+
+async function downloadSubmission(sid,index){const s=(await all("submissions")).find(x=>x.id===sid),f=s?.files?.[index];if(!f)return;const a=document.createElement('a');a.href=f.data;a.download=f.name;a.click();toast(`Mengunduh ${f.name}`)}
+
+async function openPackage(pid){const [p,ms,qs]=await Promise.all([all("packages"),all("materials"),all("questions")]);const pack=p.find(x=>x.id===pid);const visible=ms.filter(x=>x.packageId===pid&&x.published!==false);const packageQs=qs.filter(x=>x.packageId===pid);modal(`<div class="modal"><div class="modal-head"><div><h2>${esc(pack?.name)}</h2><span class="badge">${esc(pack?.subject)} • ${esc(pack?.grade)}</span></div><button class="close" onclick="closeModal()">×</button></div><div class="section"><h3>📚 Materi Pembelajaran</h3>${visible.map(m=>materialPreviewMarkup(m)+`<button class="btn btn-primary btn-sm material-quiz" data-pid="${pid}" data-mid="${m.id}">Evaluasi materi ini</button>`).join("")||'<p class="muted">Belum ada materi untuk paket ini.</p>'}</div><div class="section"><h3>Evaluasi Paket</h3><p>${packageQs.length} soal tersedia dari bank soal paket ini.</p><button class="btn btn-primary" id="startQuiz" data-pid="${pid}">Mulai Quiz Paket</button></div></div>`);document.querySelector('#startQuiz')?.addEventListener('click',()=>startQuiz(pid));document.querySelectorAll('.material-quiz').forEach(b=>b.onclick=()=>startQuiz(pid,b.dataset.mid));}
 
 async function startQuiz(pid,mid=null){
  const qs=(await all("questions")).filter(q=>q.packageId===pid&&(!q.materialId||!mid||q.materialId===mid));if(!qs.length){toast("Belum ada soal pada paket ini.");return}
@@ -188,6 +219,9 @@ async function render(){
  else if(currentView==="games")c.innerHTML=await renderGames();
  else if(currentView==="results")c.innerHTML=await renderResults();
  else if(currentView==="student")c.innerHTML=await renderStudent();
+ else if(currentView==="student-games")c.innerHTML=await renderStudentGames();
+ else if(currentView==="student-submissions")c.innerHTML=await renderStudentSubmissions();
+ else if(currentView==="submissions")c.innerHTML=await renderSubmissions();
  bind();
 }
 async function bind(){
@@ -209,6 +243,9 @@ async function bind(){
  document.querySelectorAll(".edit-material").forEach(b=>b.onclick=async()=>materialForm((await all("materials")).find(x=>x.id===b.dataset.id)));
  document.querySelectorAll(".delete-material").forEach(b=>b.onclick=async()=>{if(confirm("Hapus materi?")){await remove("materials",b.dataset.id);render()}});
  q("#newQuestion")?.addEventListener("click",()=>questionForm());
+ document.querySelectorAll("[data-student-play-game]").forEach(b=>b.onclick=()=>playGame(b.dataset.studentPlayGame));
+ document.querySelectorAll(".download-submission").forEach(b=>b.onclick=()=>downloadSubmission(b.dataset.sid,Number(b.dataset.index)));
+ document.querySelectorAll(".delete-submission").forEach(b=>b.onclick=async()=>{if(confirm("Hapus pengumpulan tugas ini?")){await remove("submissions",b.dataset.id);render()}});
  document.querySelectorAll(".edit-question").forEach(b=>b.onclick=async()=>questionForm((await all("questions")).find(x=>x.id===b.dataset.id)));
  document.querySelectorAll(".delete-question").forEach(b=>b.onclick=async()=>{if(confirm("Hapus soal?")){await remove("questions",b.dataset.id);render()}});
  q("#gameImport")?.addEventListener("change",async e=>{const f=e.target.files[0];if(!f)return;const html=await f.text();await put("games",{id:id("game"),name:f.name.replace(/\.html?$/i,""),fileName:f.name,html,description:"Game HTML impor",createdAt:new Date().toISOString()});toast("Game berhasil diimpor");render()});
@@ -219,7 +256,7 @@ async function bind(){
 
 let lastTextTarget=null;
 document.addEventListener("focusin",e=>{if(e.target.matches("input:not([type=file]):not([type=hidden]),textarea"))lastTextTarget=e.target;});
-function setupGlobalKeyboard(){const panel=document.querySelector("#globalKeyboardPanel"),toggle=document.querySelector("#globalKeyboardToggle"),field=document.querySelector("#globalMathField");toggle.onclick=()=>{panel.hidden=!panel.hidden;toggle.setAttribute("aria-expanded",String(!panel.hidden));if(!panel.hidden){requestAnimationFrame(()=>{field?.focus();if(window.mathVirtualKeyboard)window.mathVirtualKeyboard.show();});}};document.querySelector("#globalKeyboardClose").onclick=()=>{panel.hidden=true;toggle.setAttribute("aria-expanded","false");window.mathVirtualKeyboard?.hide?.()};document.querySelector("#globalMathInsert").onclick=()=>{if(!lastTextTarget){toast("Pilih kolom teks atau jawaban terlebih dahulu.");return}const value=field?.value||"";if(!value)return;const el=lastTextTarget,start=el.selectionStart??el.value.length,end=el.selectionEnd??el.value.length;el.setRangeText(value,start,end,"end");el.dispatchEvent(new Event("input",{bubbles:true}));el.focus();toast("Rumus disisipkan")};document.querySelector("#globalMathClear").onclick=()=>{if(field)field.value=""};}
+function setupGlobalKeyboard(){const panel=document.querySelector("#globalKeyboardPanel"),toggle=document.querySelector("#globalKeyboardToggle"),field=document.querySelector("#globalMathField");if(!panel||!toggle||!field)return;const open=()=>{panel.hidden=false;toggle.setAttribute("aria-expanded","true");document.body.classList.add("keyboard-open");requestAnimationFrame(()=>{field.focus();try{window.mathVirtualKeyboard?.show?.();}catch(e){}})};const close=()=>{panel.hidden=true;toggle.setAttribute("aria-expanded","false");document.body.classList.remove("keyboard-open");try{window.mathVirtualKeyboard?.hide?.();}catch(e){}};toggle.onclick=()=>panel.hidden?open():close();document.querySelector("#globalKeyboardClose").onclick=close;field.addEventListener("focus",()=>{try{window.mathVirtualKeyboard?.show?.();}catch(e){}});document.querySelector("#globalMathInsert").onclick=()=>{if(!lastTextTarget){toast("Pilih kolom teks atau jawaban terlebih dahulu.");return}const value=field.value||"";if(!value){toast("Masukkan rumus terlebih dahulu.");return}const el=lastTextTarget,start=el.selectionStart??el.value.length,end=el.selectionEnd??el.value.length;if(typeof el.setRangeText==='function')el.setRangeText(value,start,end,'end');else el.value=(el.value||'')+value;el.dispatchEvent(new Event("input",{bubbles:true}));el.focus();toast("Rumus disisipkan")};document.querySelector("#globalMathClear").onclick=()=>{field.value="";field.focus()};}
 
 function connection(){const el=document.querySelector("#connection");el.className="status "+(navigator.onLine?"online":"offline");el.textContent=navigator.onLine?"● Online":"● Offline"}
 window.addEventListener("online",connection);window.addEventListener("offline",connection);

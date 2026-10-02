@@ -33,12 +33,15 @@
         <nav>
           <button class="nav-item active" data-view="home">⌂ <span>Beranda</span></button>
           <button class="nav-item" data-view="student">🎓 <span>Mode Siswa</span></button>
+          <button class="nav-item" data-view="student-games">🎮 <span>Game Library</span></button>
+          <button class="nav-item" data-view="student-submissions">📤 <span>Upload Tugas</span></button>
           <button class="nav-item teacher-only" data-view="teacher">🔐 <span>Studio Guru</span></button>
           <button class="nav-item teacher-only" data-view="packages">▤ <span>Paket Belajar</span></button>
           <button class="nav-item teacher-only" data-view="materials">📚 <span>Materi</span></button>
           <button class="nav-item teacher-only" data-view="quiz">✓ <span>Bank Soal</span></button>
           <button class="nav-item teacher-only" data-view="games">🎮 <span>Game Library</span></button>
           <button class="nav-item teacher-only" data-view="results">◫ <span>Hasil Belajar</span></button>
+          <button class="nav-item teacher-only" data-view="submissions">📨 <span>Pengumpulan Tugas</span></button>
         </nav>
         <div class="sidebar-note">
           <b>Offline-first</b>
@@ -58,9 +61,9 @@
   <section id="globalKeyboardPanel" class="global-keyboard-panel" aria-label="Keyboard matematika" hidden>
     <div class="global-keyboard-head"><b>⌨️ Keyboard Virtual Matematika</b><button id="globalKeyboardClose" type="button" aria-label="Tutup keyboard">×</button></div>
     <p class="muted">Pilih kolom jawaban/soal, lalu gunakan tombol rumus. Tekan Sisipkan untuk memasukkan LaTeX ke kolom aktif.</p>
-    <math-field id="globalMathField" virtual-keyboard-mode="manual" smart-fence></math-field>
+    <math-field id="globalMathField" virtual-keyboard-mode="auto" smart-fence></math-field>
     <div class="global-keyboard-actions"><button id="globalMathInsert" class="btn btn-primary" type="button">Sisipkan ke kolom aktif</button><button id="globalMathClear" class="btn btn-secondary" type="button">Bersihkan</button></div>
   </section>
-  <script src="app.js"></script>
+  <script src="app.js" defer></script>
 </body>
 </html>
