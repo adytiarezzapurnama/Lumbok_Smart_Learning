@@ -1,0 +1,14 @@
+{
+  "rules": {
+    "lumbok-smart-learning": {
+      "v1": {
+        "schools": {
+          "$schoolCode": {
+            ".read": "auth != null",
+            ".write": "auth != null"
+          }
+        }
+      }
+    }
+  }
+}
