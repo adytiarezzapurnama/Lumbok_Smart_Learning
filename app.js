@@ -66,7 +66,7 @@ function goView(view){if(TEACHER_VIEWS.has(view) && !isTeacher()){teacherLogin()
 
 
 // ===== CLOUD SYNC: ONLINE → OFFLINE → ONLINE KEMBALI =====
-const syncState={configured:false,ready:false,working:false,error:"",schoolCode:"",uid:"",db:null,root:null,listeners:[],projectId:""};
+const syncState={configured:false,ready:false,working:false,error:"",schoolCode:"",uid:"",db:null,root:null,storage:null,listeners:[],projectId:""};
 function settingValue(id){return all("settings").then(xs=>xs.find(x=>x.id===id)?.value||"")}
 function normalizeSchoolCode(v){return String(v||"").trim().toUpperCase().replace(/[^A-Z0-9_-]/g,"").slice(0,48)}
 async function getSyncConfig(){
@@ -99,6 +99,7 @@ async function initCloudSync(force=false){
   if(!auth.currentUser)await auth.signInAnonymously();
   syncState.uid=auth.currentUser?.uid||"";
   syncState.db=firebase.database();
+  syncState.storage=window.firebase.storage ? firebase.storage() : null;
   syncState.root=syncState.db.ref("lumbok-smart-learning/v1/schools/"+encodeURIComponent(schoolCode));
   syncState.listeners.forEach(x=>x());syncState.listeners=[];
   for(const store of SYNC_STORES){
@@ -129,6 +130,27 @@ async function putLocalOnly(store,obj){return new Promise((res,rej)=>{const r=db
 async function pullAllRemote(){if(!syncState.root)return;for(const store of SYNC_STORES){const snap=await syncState.root.child(store).once("value");const val=snap.val()||{};for(const [key,obj] of Object.entries(val))await applyRemoteRecord(store,key,obj)}}
 function scheduleRender(){window.clearTimeout(scheduleRender._t);scheduleRender._t=window.setTimeout(()=>{if(!document.querySelector("#modal")?.open)render()},180)}
 function scheduleSync(){if(navigator.onLine)window.clearTimeout(scheduleSync._t),scheduleSync._t=window.setTimeout(()=>initCloudSync().then(()=>flushSyncQueue()),250)}
+async function uploadSubmissionFiles(submission, progressCb){
+ if(!syncState.storage)throw new Error("Firebase Storage belum tersedia. Aktifkan Storage di Firebase Console.");
+ const out=[];const files=submission.files||[];
+ for(let i=0;i<files.length;i++){
+  const f=files[i];
+  if(f.downloadURL){out.push({...f,data:undefined});delete out[out.length-1].data;continue}
+  if(!f.data)throw new Error(`Data lokal file ${f.name} tidak ditemukan`);
+  const blob=await (await fetch(f.data)).blob();
+  const safeName=f.name.replace(/[^a-zA-Z0-9._-]/g,"_");
+  const path=`lumbok-smart-learning/${encodeURIComponent(syncState.schoolCode)}/submissions/${submission.id}/${i}_${safeName}`;
+  const task=syncState.storage.ref(path).put(blob,{contentType:f.type||blob.type||"application/octet-stream"});
+  await new Promise((resolve,reject)=>{task.on(firebase.storage.TaskEvent.STATE_CHANGED,snap=>{const pct=snap.totalBytes?Math.round(snap.bytesTransferred/snap.totalBytes*100):0;progressCb?.(i,files.length,pct,f.name)},reject,resolve)});
+  const url=await syncState.storage.ref(path).getDownloadURL();
+  out.push({name:f.name,type:f.type,size:f.size,downloadURL:url,storagePath:path});
+ }
+ return out;
+}
+async function prepareSubmissionForCloud(submission, progressCb){
+ const uploaded=await uploadSubmissionFiles(submission,progressCb);
+ return {...submission,files:uploaded};
+}
 async function flushSyncQueue(){
  if(!syncState.ready||!syncState.root||syncState.working)return;
  syncState.working=true;updateConnectionUI();
@@ -137,13 +159,32 @@ async function flushSyncQueue(){
   for(const item of queue){
    const ref=syncState.root.child(item.store).child(item.id);
    if(item.op==="remove")await ref.remove();
-   else {const data={...(item.data||{}),syncUpdatedAt:Number(item.data?.syncUpdatedAt||Date.now()),_syncUpdatedBy:syncState.uid};await ref.set(data)}
+   else {
+    let data={...(item.data||{})};
+    if(item.store==="submissions"){
+      const local=await getById("submissions",item.id);
+      if(local && (local.files||[]).some(f=>!f.downloadURL)){
+        data=await prepareSubmissionForCloud(local,(i,n,p,name)=>{showUploadProgress(`Mengunggah ${name}`,((i/n)*100)+(p/n))});
+      }
+      data.files=(data.files||[]).map(f=>{const x={...f};delete x.data;return x});
+    }
+    data={...data,syncUpdatedAt:Number(data.syncUpdatedAt||Date.now()),_syncUpdatedBy:syncState.uid};
+    await ref.set(data);
+    if(item.store==="submissions"){
+      const local=await getById("submissions",item.id);
+      if(local){local.files=data.files;local.uploadStatus="uploaded";local.uploadedAt=new Date().toISOString();syncApplying=true;try{await putLocalOnly("submissions",local)}finally{syncApplying=false}}
+    }
+   }
    done.push(item.id);
   }
-  await clearSyncQueue(done);syncState.error="";
- }catch(e){syncState.error=e?.message||String(e)}
+  await clearSyncQueue(done);syncState.error="";hideUploadProgress();
+ }catch(e){syncState.error=e?.message||String(e);showUploadProgress(`Upload tertunda: ${syncState.error}`,0,true)}
  syncState.working=false;updateConnectionUI();
 }
+async function getById(store,key){return new Promise((res,rej)=>{const r=db.transaction(store).objectStore(store).get(key);r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})}
+function showUploadProgress(text,pct=0,error=false){let el=document.querySelector("#uploadProgress");if(!el)return;el.hidden=false;el.querySelector(".upload-progress-text").textContent=text;el.querySelector(".upload-progress-bar").style.width=Math.max(0,Math.min(100,pct))+"%";el.querySelector(".upload-progress-value").textContent=Math.round(Math.max(0,Math.min(100,pct)))+"%";el.classList.toggle("error",!!error)}
+function hideUploadProgress(){const el=document.querySelector("#uploadProgress");if(el)el.hidden=true}
+
 async function saveSyncConfig(config,schoolCode){
  await putLocalOnly("settings",{id:"firebase_config",value:JSON.stringify(config),updatedAt:new Date().toISOString()});
  await putLocalOnly("settings",{id:"sync_school_code",value:normalizeSchoolCode(schoolCode),updatedAt:new Date().toISOString()});
@@ -286,10 +327,24 @@ function formatBytes(n=0){if(n<1024)return `${n} B`;if(n<1024*1024)return `${(n/
 async function renderStudentSubmissions(){
  const [ps,subs]=await Promise.all([all("packages"),all("submissions")]);
  const recent=subs.sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt)).slice(0,10);
- return layout("Upload Tugas","Kirim tugas siswa dalam berbagai format. Data tersimpan lokal saat offline dan akan dikirim otomatis ke Guru saat internet kembali jika sinkronisasi cloud aktif.",`<div class="two-col"><div class="card"><div class="kicker">PENGUMPULAN TUGAS</div><h2 style="margin-top:6px">📤 Kirim Tugas</h2><div class="notice">Format yang didukung: PDF, DOC/DOCX, PPT/PPTX, XLS/XLSX, CSV, TXT/RTF, JPG/JPEG/PNG/WEBP/GIF, ZIP/RAR/7Z, ODT/ODS/ODP. Maksimal 20 MB per file.</div><form id="submissionForm"><div class="form-grid"><div class="field"><label>Nama Siswa</label><input name="student" required placeholder="Nama lengkap siswa"></div><div class="field"><label>Paket / Mata Pelajaran</label><select name="packageId"><option value="">Tidak terkait paket tertentu</option>${ps.map(p=>`<option value="${p.id}">${esc(p.name)} — Kelas ${esc(p.grade)}</option>`).join("")}</select></div></div><div class="field"><label>Judul Tugas</label><input name="title" required placeholder="Contoh: Tugas Sistem Pernapasan"></div><div class="field"><label>Keterangan (opsional)</label><textarea name="note" placeholder="Catatan untuk guru..."></textarea></div><div class="field"><label>File Tugas</label><input id="submissionFiles" name="files" type="file" multiple accept="${submissionAccept()}"><small class="muted">Bisa memilih beberapa file sekaligus. Maksimal 20 MB per file.</small></div><div id="submissionFileList" class="file-list"></div><button class="btn btn-primary" type="submit">📤 Kirim Tugas</button></form></div><div class="card"><h3>Alur pengumpulan</h3><ol class="muted" style="line-height:1.8"><li>Pilih nama siswa dan paket.</li><li>Masukkan judul tugas.</li><li>Pilih satu atau beberapa file.</li><li>Klik Kirim Tugas.</li><li>Guru dapat melihat dan mengunduhnya dari Pengumpulan Tugas.</li></ol><div class="notice">Pada mode offline, pengumpulan masuk antrean lokal. Saat online kembali, pengumpulan dikirim otomatis ke cloud sehingga Guru dapat melihatnya dari perangkat lain. Backup/Restore tetap tersedia sebagai cadangan manual.</div></div></div><div class="section"><div class="card"><h3>Pengumpulan Terbaru</h3><div class="table-wrap"><table><thead><tr><th>Waktu</th><th>Siswa</th><th>Tugas</th><th>File</th></tr></thead><tbody>${recent.map(s=>`<tr><td>${fmt(s.createdAt)}</td><td>${esc(s.student)}</td><td>${esc(s.title)}</td><td>${s.files?.map(f=>esc(f.name)).join(", ")||"-"}</td></tr>`).join("")||'<tr><td colspan="4">Belum ada tugas dikirim dari perangkat ini.</td></tr>'}</tbody></table></div></div></div>`);
+ return layout("Upload Tugas","Kirim tugas siswa dalam berbagai format. Data tersimpan lokal saat offline dan akan dikirim otomatis ke Guru saat internet kembali jika sinkronisasi cloud aktif.",`<div class="two-col"><div class="card"><div class="kicker">PENGUMPULAN TUGAS</div><h2 style="margin-top:6px">📤 Kirim Tugas</h2><div class="notice">Format yang didukung: PDF, DOC/DOCX, PPT/PPTX, XLS/XLSX, CSV, TXT/RTF, JPG/JPEG/PNG/WEBP/GIF, ZIP/RAR/7Z, ODT/ODS/ODP. Maksimal 20 MB per file.</div><form id="submissionForm"><div class="form-grid"><div class="field"><label>Nama Siswa</label><input name="student" required placeholder="Nama lengkap siswa"></div><div class="field"><label>Paket / Mata Pelajaran</label><select name="packageId"><option value="">Tidak terkait paket tertentu</option>${ps.map(p=>`<option value="${p.id}">${esc(p.name)} — Kelas ${esc(p.grade)}</option>`).join("")}</select></div></div><div class="field"><label>Judul Tugas</label><input name="title" required placeholder="Contoh: Tugas Sistem Pernapasan"></div><div class="field"><label>Keterangan (opsional)</label><textarea name="note" placeholder="Catatan untuk guru..."></textarea></div><div class="field"><label>File Tugas</label><input id="submissionFiles" name="files" type="file" multiple accept="${submissionAccept()}"><small class="muted">Bisa memilih beberapa file sekaligus. Maksimal 20 MB per file.</small></div><div id="submissionFileList" class="file-list"></div><div id="uploadProgress" class="upload-progress" hidden><div class="upload-progress-head"><b class="upload-progress-text">Menyiapkan upload...</b><span class="upload-progress-value">0%</span></div><div class="upload-progress-track"><div class="upload-progress-bar"></div></div><small>Jangan tutup halaman sampai proses upload selesai.</small></div><button class="btn btn-primary" type="submit">📤 Kirim Tugas</button></form></div><div class="card"><h3>Alur pengumpulan</h3><ol class="muted" style="line-height:1.8"><li>Pilih nama siswa dan paket.</li><li>Masukkan judul tugas.</li><li>Pilih satu atau beberapa file.</li><li>Klik Kirim Tugas.</li><li>Guru dapat melihat dan mengunduhnya dari Pengumpulan Tugas.</li></ol><div class="notice">Pada mode offline, pengumpulan masuk antrean lokal. Saat online kembali, pengumpulan dikirim otomatis ke cloud sehingga Guru dapat melihatnya dari perangkat lain. Backup/Restore tetap tersedia sebagai cadangan manual.</div></div></div><div class="section"><div class="card"><h3>Pengumpulan Terbaru</h3><div class="table-wrap"><table><thead><tr><th>Waktu</th><th>Siswa</th><th>Tugas</th><th>File</th></tr></thead><tbody>${recent.map(s=>`<tr><td>${fmt(s.createdAt)}</td><td>${esc(s.student)}</td><td>${esc(s.title)}</td><td>${s.files?.map(f=>esc(f.name)).join(", ")||"-"}</td></tr>`).join("")||'<tr><td colspan="4">Belum ada tugas dikirim dari perangkat ini.</td></tr>'}</tbody></table></div></div></div>`);
  const f=document.querySelector('#submissionForm'), filesInput=document.querySelector('#submissionFiles'), list=document.querySelector('#submissionFileList');
  filesInput?.addEventListener('change',()=>{const files=[...filesInput.files];list.innerHTML=files.map(x=>`<div class="file-chip">📎 ${esc(x.name)} <span>${formatBytes(x.size)}</span></div>`).join("")||""});
- f.onsubmit=async e=>{e.preventDefault();const files=[...filesInput.files];if(!files.length){toast("Pilih minimal satu file tugas");return}const tooBig=files.find(x=>x.size>20*1024*1024);if(tooBig){toast(`File ${tooBig.name} melebihi 20 MB`);return}const fd=new FormData(f);const stored=[];for(const file of files)stored.push({name:file.name,type:file.type||"application/octet-stream",size:file.size,data:await fileToDataURL(file)});await put("submissions",{id:id("sub"),student:String(fd.get("student")).trim(),packageId:String(fd.get("packageId")||""),title:String(fd.get("title")).trim(),note:String(fd.get("note")||""),files:stored,createdAt:new Date().toISOString()});f.reset();list.innerHTML="";toast("Tugas berhasil disimpan");await render()};
+ f.onsubmit=async e=>{e.preventDefault();const files=[...filesInput.files];if(!files.length){toast("Pilih minimal satu file tugas");return}const tooBig=files.find(x=>x.size>20*1024*1024);if(tooBig){toast(`File ${tooBig.name} melebihi 20 MB`);return}
+ const submitBtn=f.querySelector('button[type="submit"]');submitBtn.disabled=true;submitBtn.textContent="⏳ Menyimpan...";
+ const submission={id:id("sub"),student:String(new FormData(f).get("student")).trim(),packageId:String(new FormData(f).get("packageId")||""),title:String(new FormData(f).get("title")).trim(),note:String(new FormData(f).get("note")||""),files:[],createdAt:new Date().toISOString(),uploadStatus:navigator.onLine?"uploading":"queued"};
+ try{
+  showUploadProgress(navigator.onLine?"Menyiapkan upload...":"Offline: menyimpan para upload secara lokal...",0);
+  for(let i=0;i<files.length;i++){const file=files[i];showUploadProgress(`Membaca ${file.name}...`,(i/files.length)*100);submission.files.push({name:file.name,type:file.type||"application/octet-stream",size:file.size,data:await fileToDataURL(file)})}
+  await put("submissions",submission);
+  if(navigator.onLine && syncState.ready){showUploadProgress("Mengunggah file ke cloud...",5);await flushSyncQueue();}
+  const saved=await getById("submissions",submission.id);
+  f.reset();list.innerHTML="";submitBtn.disabled=false;submitBtn.textContent="📤 Kirim Tugas";
+  if(saved?.uploadStatus==="uploaded"){showUploadProgress("✓ File berhasil di-upload dan tersimpan di Pengumpulan Tugas Guru",100);toast("✓ Tugas berhasil di-upload");setTimeout(hideUploadProgress,2800)}
+  else {showUploadProgress("✓ Tugas tersimpan di perangkat. Akan di-upload otomatis saat internet tersedia.",100);toast("Tugas tersimpan lokal; menunggu sinkronisasi")}
+  await render();
+ }catch(err){submitBtn.disabled=false;submitBtn.textContent="📤 Kirim Tugas";showUploadProgress("Upload gagal: "+(err?.message||err),0,true);toast("Upload gagal. Tugas tetap dipertahankan di perangkat.")}
+ };
 }
 
 async function renderSubmissions(){
@@ -297,7 +352,7 @@ async function renderSubmissions(){
  return layout("Pengumpulan Tugas","Guru dapat melihat dan mengunduh tugas yang tersimpan di perangkat ini atau hasil Restore dari perangkat siswa.",`<div class="notice">Pengumpulan tugas menggunakan pola Online–Offline–Online. Jika cloud aktif, tugas siswa akan otomatis muncul pada perangkat Guru. Jika cloud belum dikonfigurasi, gunakan Backup/Restore sebagai jalur manual.</div><div class="card"><div class="table-wrap"><table><thead><tr><th>Waktu</th><th>Siswa</th><th>Tugas</th><th>Paket</th><th>File</th><th>Aksi</th></tr></thead><tbody>${subs.sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt)).map(s=>`<tr><td>${fmt(s.createdAt)}</td><td><b>${esc(s.student)}</b></td><td>${esc(s.title)}${s.note?`<br><span class="muted">${esc(s.note)}</span>`:""}</td><td>${esc(pn[s.packageId]||"-")}</td><td>${s.files?.map(f=>`<div>📎 ${esc(f.name)} <small class="muted">(${formatBytes(f.size)})</small></div>`).join("")||"-"}</td><td>${s.files?.map((f,i)=>`<button class="btn btn-secondary btn-sm download-submission" data-sid="${s.id}" data-index="${i}">Unduh</button>`).join(" ")||""} <button class="btn btn-danger btn-sm delete-submission" data-id="${s.id}">Hapus</button></td></tr>`).join("")||'<tr><td colspan="6">Belum ada pengumpulan tugas.</td></tr>'}</tbody></table></div></div>`);
 }
 
-async function downloadSubmission(sid,index){const s=(await all("submissions")).find(x=>x.id===sid),f=s?.files?.[index];if(!f)return;const a=document.createElement('a');a.href=f.data;a.download=f.name;a.click();toast(`Mengunduh ${f.name}`)}
+async function downloadSubmission(sid,index){const s=(await all("submissions")).find(x=>x.id===sid),f=s?.files?.[index];if(!f)return;const a=document.createElement('a');a.href=f.downloadURL||f.data||"";a.download=f.name;a.target="_blank";a.rel="noopener";a.click();toast(`Membuka ${f.name}`)}
 
 async function openPackage(pid){const [p,ms,qs]=await Promise.all([all("packages"),all("materials"),all("questions")]);const pack=p.find(x=>x.id===pid);const visible=ms.filter(x=>x.packageId===pid&&x.published!==false);const packageQs=qs.filter(x=>x.packageId===pid);modal(`<div class="modal"><div class="modal-head"><div><h2>${esc(pack?.name)}</h2><span class="badge">${esc(pack?.subject)} • ${esc(pack?.grade)}</span></div><button class="close" onclick="closeModal()">×</button></div><div class="section"><h3>📚 Materi Pembelajaran</h3>${visible.map(m=>materialPreviewMarkup(m)+`<button class="btn btn-primary btn-sm material-quiz" data-pid="${pid}" data-mid="${m.id}">Evaluasi materi ini</button>`).join("")||'<p class="muted">Belum ada materi untuk paket ini.</p>'}</div><div class="section"><h3>Evaluasi Paket</h3><p>${packageQs.length} soal tersedia dari bank soal paket ini.</p><button class="btn btn-primary" id="startQuiz" data-pid="${pid}">Mulai Quiz Paket</button></div></div>`);document.querySelector('#startQuiz')?.addEventListener('click',()=>startQuiz(pid));document.querySelectorAll('.material-quiz').forEach(b=>b.onclick=()=>startQuiz(pid,b.dataset.mid));}
 
